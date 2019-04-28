@@ -7,7 +7,7 @@
   "servers": [
     "ss://RC4-MD5:pass1@ip1:port1"
   ],
-  "maxfail": 1,
+  "maxfail": 5,
   "recovertime": 3600,
   "starttimeout": 5,
   "remotetimeout": 60,
