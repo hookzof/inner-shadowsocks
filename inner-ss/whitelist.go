@@ -13,7 +13,7 @@ type Whitelist struct {
 	logger     func(string, ...interface{})
 }
 
-func (w *Whitelist) check_ip(ip net.IP) bool {
+func (w *Whitelist) checkIp(ip net.IP) bool {
 	if !w.enable {
 		return true
 	}
@@ -25,7 +25,7 @@ func (w *Whitelist) check_ip(ip net.IP) bool {
 	return false
 }
 
-func (w *Whitelist) check_domain(d string) bool {
+func (w *Whitelist) checkDomain(d string) bool {
 	if !w.enable {
 		return true
 	}
@@ -40,21 +40,21 @@ func (w *Whitelist) check_domain(d string) bool {
 func (w *Whitelist) check(data []byte) error {
 	switch data[0] {
 	case 0x01:
-		if w.check_ip(net.IP(data[1 : 1+net.IPv4len])) {
+		if w.checkIp(net.IP(data[1 : 1+net.IPv4len])) {
 			w.logger("[whitelist] Whitelist ipv4 pass.")
 			return nil
 		}
 		w.logger("[whitelist] Whitelist ipv4 reject.")
 		return errors.New("IPv4 not in whitelist.")
 	case 0x03:
-		if w.check_domain(string(data[2 : 2+data[1]])) {
+		if w.checkDomain(string(data[2 : 2+data[1]])) {
 			w.logger("[whitelist] Whitelist domain pass.")
 			return nil
 		}
 		w.logger("[whitelist] Whitelist domain reject.")
 		return errors.New("Domain not in whitelist.")
 	case 0x04:
-		if w.check_ip(net.IP(data[1 : 1+net.IPv6len])) {
+		if w.checkIp(net.IP(data[1 : 1+net.IPv6len])) {
 			w.logger("[whitelist] Whitelist ipv6 pass.")
 			return nil
 		}

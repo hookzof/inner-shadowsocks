@@ -16,13 +16,13 @@ import (
 )
 
 const (
-	channel_buffer_size    = 128
-	default_Maxfail        = 10
-	default_Recovertime    = 600
-	default_Listen         = "0.0.0.0"
-	default_start_timeout  = 8
-	default_remote_timeout = 60
-	default_inside_timeout = 60
+	channelBufferSize    = 128
+	defaultMaxfail       = 10
+	defaultRecovertime   = 600
+	defaultListen        = "0.0.0.0"
+	defaultStartTimeout  = 8
+	defaultRemoteTimeout = 60
+	defaultInsideTimeout = 60
 )
 
 type Server struct {
@@ -108,9 +108,9 @@ func (config *Config) log(f string, v ...interface{}) {
 
 func (tc timeoutConn) heartbeat() {
 	if tc.active {
-		tc.Conn.SetDeadline(time.Now().Add(tc.timelimit))
+		_ = tc.Conn.SetDeadline(time.Now().Add(tc.timelimit))
 	} else {
-		tc.Conn.SetDeadline(time.Now().Add(tc.starttime))
+		_ = tc.Conn.SetDeadline(time.Now().Add(tc.starttime))
 		tc.active = true
 	}
 }
@@ -155,7 +155,7 @@ func bytein(y []byte, x byte) bool {
 
 func (config *Config) handleConnection(conn *net.TCPConn) error {
 	defer conn.Close()
-	conn.SetKeepAlive(true)
+	_ = conn.SetKeepAlive(true)
 	if err := config.handleSocksEncrypt(conn); err != nil {
 		config.log("[inner-ss] Error when validating user. %s", err)
 		return err
@@ -169,17 +169,17 @@ func (config *Config) handleConnection(conn *net.TCPConn) error {
 		config.log("[inner-ss] Error when checking ip or domain. %s", err)
 		return err
 	}
-	server_id := config.scheduler.get()
-	server, ciph := config.servers[server_id].addr, config.servers[server_id].ciph
+	serverId := config.scheduler.get()
+	server, ciph := config.servers[serverId].addr, config.servers[serverId].ciph
 	rc, err := net.Dial("tcp", server)
 	if err != nil {
 		config.log("[inner-ss] Cannot connect to shadowsocks server %s\n", server)
-		config.scheduler.report_fail(server_id)
+		config.scheduler.reportFail(serverId)
 		return err
 	}
-	config.scheduler.report_success(server_id)
+	config.scheduler.reportSuccess(serverId)
 	defer rc.Close()
-	rc.(*net.TCPConn).SetKeepAlive(true)
+	_ = rc.(*net.TCPConn).SetKeepAlive(true)
 	rc = ciph.StreamConn(rc)
 	if _, err := rc.Write(addr); err != nil {
 		return err
@@ -206,7 +206,7 @@ func (config *Config) handleSocksEncrypt(conn *net.TCPConn) error {
 	if buf[0] != 0x05 || !bytein(methods, auth) {
 		return errors.New("Not Socks5 or auth type incorrect.")
 	}
-	conn.Write([]byte{0x05, auth})
+	_, _ = conn.Write([]byte{0x05, auth})
 	if config.auth {
 		n, err = conn.Read(buf)
 		if err != nil {
@@ -215,11 +215,11 @@ func (config *Config) handleSocksEncrypt(conn *net.TCPConn) error {
 		if n < 3 || n < int(buf[1])+3 {
 			return errors.New("Data not correct.")
 		}
-		username_len := int(buf[1])
-		username := buf[2 : 2+username_len]
-		password := buf[3+username_len : n]
+		usernameLen := int(buf[1])
+		username := buf[2 : 2+usernameLen]
+		password := buf[3+usernameLen : n]
 		if bytes.Equal(username, config.username) && bytes.Equal(password, config.password) {
-			conn.Write([]byte{0x01, 0x00})
+			_, _ = conn.Write([]byte{0x01, 0x00})
 			return nil
 		}
 		return errors.New("Invalid username or password.")
@@ -259,9 +259,9 @@ func getAddr(conn *net.TCPConn) ([]byte, error) {
 
 	switch buf[1] {
 	case 0x01:
-		conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10})
+		_, _ = conn.Write([]byte{0x05, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x10, 0x10})
 	default:
-		conn.Write([]byte{0x05, 0x07})
+		_, _ = conn.Write([]byte{0x05, 0x07})
 		return nil, errors.New("Unsupported command.")
 	}
 	return dstAddr, nil
@@ -299,31 +299,31 @@ func parseURL(s string) (addr, cipher, password string, err error) {
 	return
 }
 
-func LoadUserConfig(config_file string, verbose bool) (Config, error) {
-	user_config := userConfig{Maxfail: default_Maxfail, Recovertime: default_Recovertime, Listen: default_Listen,
-		Remotetimeout: default_remote_timeout, Insidetimeout: default_inside_timeout, Starttimeout: default_start_timeout,
+func LoadUserConfig(configFile string, verbose bool) (Config, error) {
+	userConfig := userConfig{Maxfail: defaultMaxfail, Recovertime: defaultRecovertime, Listen: defaultListen,
+		Remotetimeout: defaultRemoteTimeout, Insidetimeout: defaultInsideTimeout, Starttimeout: defaultStartTimeout,
 		Whitelistenable: false}
 	config := Config{verbose: verbose}
-	data, err := ioutil.ReadFile(config_file)
+	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
 		return config, err
 	}
-	if err := json.Unmarshal(data, &user_config); err != nil {
+	if err := json.Unmarshal(data, &userConfig); err != nil {
 		return config, err
 	}
-	if user_config.Listen == "" || user_config.Port == 0 {
+	if userConfig.Listen == "" || userConfig.Port == 0 {
 		return config, errors.New("Cannot load config.")
 	}
-	config.listenAddr = net.TCPAddr{IP: net.ParseIP(user_config.Listen), Port: user_config.Port}
-	config.auth, config.username, config.password = user_config.Auth, []byte(user_config.Username), []byte(user_config.Password)
-	config.servers = user_config.loadServers()
-	config.whitelist = user_config.loadWhitelist()
+	config.listenAddr = net.TCPAddr{IP: net.ParseIP(userConfig.Listen), Port: userConfig.Port}
+	config.auth, config.username, config.password = userConfig.Auth, []byte(userConfig.Username), []byte(userConfig.Password)
+	config.servers = userConfig.loadServers()
+	config.whitelist = userConfig.loadWhitelist()
 	config.whitelist.logger = config.log
 	config.scheduler = Scheduler{}
-	config.scheduler.init(len(config.servers), user_config.Maxfail, channel_buffer_size, user_config.Recovertime, verbose)
-	config.rtimeout = time.Duration(user_config.Remotetimeout) * time.Second
-	config.itimeout = time.Duration(user_config.Insidetimeout) * time.Second
-	config.stimeout = time.Duration(user_config.Starttimeout) * time.Second
+	config.scheduler.init(len(config.servers), userConfig.Maxfail, channelBufferSize, userConfig.Recovertime, verbose)
+	config.rtimeout = time.Duration(userConfig.Remotetimeout) * time.Second
+	config.itimeout = time.Duration(userConfig.Insidetimeout) * time.Second
+	config.stimeout = time.Duration(userConfig.Starttimeout) * time.Second
 	return config, nil
 }
 
@@ -340,13 +340,13 @@ func makeServer(s string) (Server, error) {
 }
 
 func main() {
-	var config_file string
+	var configFile string
 	var verbose bool
 	flag.BoolVar(&verbose, "v", false, "verbose mode")
-	flag.StringVar(&config_file, "c", "config.json", "config file path")
+	flag.StringVar(&configFile, "c", "config.json", "config file path")
 	flag.Parse()
 
-	c, err := LoadUserConfig(config_file, verbose)
+	c, err := LoadUserConfig(configFile, verbose)
 	if err != nil {
 		log.Println("Error!", err)
 		return
